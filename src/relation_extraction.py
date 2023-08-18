@@ -164,12 +164,19 @@ if __name__ == '__main__':
                         help="if use this mode, we will use BCEWithLogitsLoss or binary focal loss functions.")
     parser.add_argument('--balance_sample_weights', action='store_true',
                         help="Whether to create sample weights and pass it to loss functions")
+    
+    parser.add_argument('--ckpt_dir', default=None, type=str,
+                        help="The checkpoint path for loading the model during prediction")    
+
     # using pytorch ddp
     # parser.add_argument('--ddp', action='store_true',
     #                     help="Whether to use Distributed Data Parallel")
     # parser.add_argument('--local_rank', default=-1, type=int,
     #                     help="local rank ID")
-
+    parser.add_argument('--lora_rank', default=8, type=int,
+                        help="The rank of the LoRA weight matrix")
+    parser.add_argument('--lora_alpha', default=32, type=int,
+                        help="The alpha parameter of the LoRA")
     args = parser.parse_args()
     # save the experiment arguments into a file under new model dir
     Path(args.new_model_dir).mkdir(exist_ok=True, parents=True)

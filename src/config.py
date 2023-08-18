@@ -1,7 +1,8 @@
-from transformers import (BertConfig, RobertaConfig, XLNetConfig, AlbertConfig, LongformerConfig,
+from transformers import (BertConfig, RobertaConfig, XLNetConfig, AlbertConfig, LongformerConfig,LlamaConfig, LlamaForSequenceClassification,
                           BertTokenizer, RobertaTokenizer, XLNetTokenizer, AlbertTokenizer, LongformerTokenizer,
-                          DebertaConfig, DebertaTokenizer, MegatronBertConfig)
-from models import (BertForRelationIdentification, RoBERTaForRelationIdentification,
+                          DebertaConfig, DebertaTokenizer,LlamaTokenizer, MegatronBertConfig )
+from models import (LlamaForRelationIdentification,
+                    BertForRelationIdentification, RoBERTaForRelationIdentification,
                     XLNetForRelationIdentification, AlbertForRelationIdentification,
                     LongFormerForRelationIdentification, DebertaForRelationIdentification,
                     MegatronForRelationIdentification)
@@ -14,9 +15,11 @@ EN2_END = "[e2]"
 # keep the seq order
 SPEC_TAGS = [EN1_START, EN1_END, EN2_START, EN2_END]
 
-MODEL_REQUIRE_SEGMENT_ID = {'bert', 'xlnet', 'albert', 'deberta', 'megatron'}
+MODEL_REQUIRE_SEGMENT_ID = {'llama','bert', 'xlnet', 'albert', 'deberta', 'megatron'}
 
 MODEL_DICT = {
+    "llama":(LlamaForSequenceClassification, LlamaConfig, LlamaTokenizer),
+    "llama1":(LlamaForSequenceClassification, LlamaConfig, LlamaTokenizer),
     "bert": (BertForRelationIdentification, BertConfig, BertTokenizer),
     "megatron": (MegatronForRelationIdentification, MegatronBertConfig, BertTokenizer),
     "roberta": (RoBERTaForRelationIdentification, RobertaConfig, RobertaTokenizer),

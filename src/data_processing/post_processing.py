@@ -16,9 +16,9 @@ from pathlib import Path
 import argparse
 import numpy as np
 from utils import TransformerLogger
-from data_processing.io_utils import load_text, save_text, pkl_load
+from io_utils import load_text, save_text, pkl_load
 from collections import defaultdict
-from data_processing.data_format_conf import NON_RELATION_TAG, BRAT_REL_TEMPLATE
+from data_format_conf import NON_RELATION_TAG, BRAT_REL_TEMPLATE
 import traceback
 
 

@@ -3,7 +3,9 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 from utils import TransformerLogger
 from transformers.modeling_utils import SequenceSummary
-from transformers import (BertForSequenceClassification, BertModel,
+from transformers import (
+                          LlamaForSequenceClassification, LlamaModel,
+                          BertForSequenceClassification, BertModel,
                           XLNetForSequenceClassification, XLNetModel,
                           RobertaForSequenceClassification, RobertaModel,
                           AlbertForSequenceClassification, AlbertModel,
@@ -44,7 +46,8 @@ class BaseModel(PreTrainedModel):
             else:
                 self.loss_fct = CrossEntropyLoss(weight=sample_weights)
 
-        self.drop_out = StableDropout(config.hidden_dropout_prob)
+#         self.drop_out = StableDropout(config.hidden_dropout_prob)
+        self.drop_out = StableDropout(0.05)
 
         if self.scheme == 1:
             self.classifier_dim = config.hidden_size * 3
@@ -130,7 +133,38 @@ class BertForRelationIdentification(BertForSequenceClassification, BaseModel):
 
         return self.calc_loss(logits, outputs, labels)
 
+class LlamaForRelationIdentification(LlamaForSequenceClassification, BaseModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.llama = LlamaModel(config)
+        self.init_weights()
 
+    def forward(self,
+                input_ids=None,
+                attention_mask=None,
+                position_ids=None,
+                inputs_embeds=None,
+                labels=None,
+                output_attentions=None,
+                output_hidden_states=None,
+                **kwargs):
+
+        outputs = self.llama(
+            input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            # token_type_ids=token_type_ids,
+            inputs_embeds=inputs_embeds,
+#             output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states
+        )
+
+        pooled_output = outputs[1]
+        seq_output = outputs[0]
+        logits = self.output2logits(pooled_output, seq_output, input_ids)
+
+        return self.calc_loss(logits, outputs, labels)
+    
 class RoBERTaForRelationIdentification(RobertaForSequenceClassification, BaseModel):
     def __init__(self, config):
         super().__init__(config)

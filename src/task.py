@@ -11,6 +11,8 @@ from utils import acc_and_f1
 from data_processing.io_utils import pkl_save, pkl_load, save_json
 from transformers import glue_convert_examples_to_features as convert_examples_to_relation_extraction_features
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
+from peft import LoraConfig, TaskType, get_peft_model
+from peft import PeftModel, PeftConfig
 import torch
 from tqdm import trange, tqdm
 import numpy as np
@@ -18,7 +20,38 @@ from packaging import version
 from pathlib import Path
 from config import SPEC_TAGS, MODEL_DICT, VERSION, NEW_ARGS, CONFIG_VERSION_NAME
 import shutil
+import os
+import wandb
+import pickle
+from accelerate import Accelerator
+# from transformers.deepspeed import HfDeepSpeedConfig
+#import deepspeed
 
+os.environ["WANDB_API_KEY"]="2fa1c59c587d4cb7dd76f14eebcc6475ce169564"
+os.environ["WANDB_ENTITY"]="lathashree01"
+os.environ["WANDB_PROJECT"]="final_ft_pretrain_llama2"
+
+#ckpt_dir ="/rds/general/user/l22/home/git_repos/ClinicalTransformerRelationExtraction/llama_models/ckpt_0"
+#ckpt_dir="/homes/l22/Documents/git_repos/ClinicalTransformerRelationExtraction/llama_models/ckpt_0"
+#ckpt_dir="/vol/bitbucket/l22/llama2_models_slurm_co1/ckpt_0"
+
+mycache_dir="/vol/bitbucket/l22/llama2"
+#mycache_dir="/rds/general/user/l22/home/llama_2/"
+
+# data_path='/rds/general/user/l22/home/git_repos/thesis/datasets/'
+
+loss_filename="/final_loss_dict.pickle"
+
+#PEFT_MODEL_PATH='/rds/general/user/l22/home/git_repos/thesis/llama2_bkup/checkpoint-16000/pt_lora_model/'
+PEFT_MODEL_PATH='/vol/bitbucket/l22/llama2_bkup/checkpoint-16000/pt_lora_model/'
+
+PATH_TO_CONVERTED_WEIGHTS='meta-llama/Llama-2-7b-hf'
+lora_trainable="q_proj,v_proj,k_proj,o_proj"
+modules_to_save="wte,lm_head"
+lora_dropout=0.05
+target_modules = lora_trainable.split(',')
+mod_to_save = modules_to_save.split(',')
+loss_dict={}
 
 class TaskRunner(object):
 
@@ -34,6 +67,7 @@ class TaskRunner(object):
         self.new_model_dir_path = Path(self.args.new_model_dir)
         self.new_model_dir_path.mkdir(parents=True, exist_ok=True)
         self._use_amp_for_fp16_from = 0
+        self.loss_file_path = Path(self.args.new_model_dir+loss_filename)
 
     def task_runner_default_init(self):
         # set up data processor
@@ -78,18 +112,23 @@ class TaskRunner(object):
     def train(self):
         # create data loader
         self.args.logger.info("start training...")
+        self.args.logger.info("Saving loss in file..{}".format(self.loss_file_path))
         tr_loss = .0
         t_step = 1
         latest_best_score = .0
-
+#         dschf = HfDeepSpeedConfig(ds_config) 
+        accelerator = Accelerator()
+        self.train_data_loader, self.model, self.optimizer = accelerator.prepare(
+                            self.train_data_loader, self.model, self.optimizer
+                        )
         epoch_iter = trange(self.args.num_train_epochs, desc="Epoch", disable=not self.args.progress_bar)
+        wandb.init()
         for epoch in epoch_iter:
             batch_iter = tqdm(self.train_data_loader, desc="Batch", disable=not self.args.progress_bar)
             batch_total_step = len(self.train_data_loader)
             for step, batch in enumerate(batch_iter):
                 self.model.train()
                 self.model.zero_grad()
-
                 batch_input = batch_to_model_input(batch, model_type=self.args.model_type, device=self.args.device)
 
                 if self.args.fp16 and self._use_amp_for_fp16_from == 1:
@@ -110,7 +149,8 @@ class TaskRunner(object):
                         with self.amp.scale_loss(loss, self.optimizer) as scaled_loss:
                             scaled_loss.backward()
                 else:
-                    loss.backward()
+                    accelerator.backward(loss)
+#                     loss.backward()
 
                 # update gradient
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (step + 1) == batch_total_step:
@@ -134,6 +174,9 @@ class TaskRunner(object):
                     self.args.logger.info(
                         "epoch: {}; global step: {}; total loss: {}; average loss: {}".format(
                             epoch+1, t_step, tr_loss, tr_loss/t_step))
+                if(t_step % 100 == 0):
+                    wandb.log({"train_loss/step": tr_loss/t_step}, step=t_step)    
+                    loss_dict[t_step] = tr_loss/t_step
 
                 t_step += 1
             batch_iter.close()
@@ -155,11 +198,16 @@ class TaskRunner(object):
                     self._save_model(epoch+1)
                     latest_best_score = f1
         epoch_iter.close()
+        self.model = accelerator.unwrap_model(self.model)
 
+        wandb.finish()
         # max_num_checkpoints=0 then save at the end of training
         if self.args.max_num_checkpoints <= 0:
             self._save_model(0)
             self.args.logger.info("training finish and the trained model is saved.")
+        #self.args.logger.info("Saving loss in file..{}".format(self.loss_file_path))
+        with open(self.loss_file_path, 'wb') as handle:
+            pickle.dump(loss_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     def eval(self, non_rel_label=""):
         self.args.logger.info("start evaluation...")
@@ -189,7 +237,13 @@ class TaskRunner(object):
         model, config, tokenizer = self.model_dict[self.args.model_type]
 
         # init tokenizer and add special tags
-        self.tokenizer = tokenizer.from_pretrained(self.args.pretrained_model, do_lower_case=self.args.do_lower_case)
+        self.tokenizer = tokenizer.from_pretrained(PEFT_MODEL_PATH, do_lower_case=self.args.do_lower_case)
+        print("Setting pd_token_______________________")
+        
+        if getattr(self.tokenizer, "pad_token_id") is None:
+            print("assigning custom pad token ---> ", self.tokenizer.eos_token_id)
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+            
         last_token_idx = len(self.tokenizer)
         self.tokenizer.add_tokens(SPEC_TAGS)
         spec_token_new_ids = tuple([(last_token_idx + idx) for idx in range(len(self.tokenizer) - last_token_idx)])
@@ -204,6 +258,10 @@ class TaskRunner(object):
         self.idx2label = idx2label
 
         self.config = config.from_pretrained(self.args.pretrained_model, num_labels=num_labels)
+        self.config.torch_dtype = getattr(torch, 'bfloat16')
+        print("##############")
+        print(self.config)
+        print("##############")
         self.config.update({CONFIG_VERSION_NAME: VERSION})
         # The number of tokens to cache.
         # The key/value pairs that have already been pre-computed in a previous forward pass won’t be re-computed.
@@ -211,6 +269,7 @@ class TaskRunner(object):
             self.config.mem_len = self.config.d_model
             # change dropout name
             self.config.hidden_dropout_prob = self.config.dropout
+
         self.config.tags = spec_token_new_ids
         self.config.scheme = self.args.classification_scheme
         # binary mode
@@ -229,11 +288,53 @@ class TaskRunner(object):
             self.args.logger.info(
                 f"using sample weights: {label_id2freq} and converted weight matrix is {self.config.sample_weights}")
         # init model
-        self.model = model.from_pretrained(self.args.pretrained_model, config=self.config)
+        if(self.args.model_type=="llama1"):
+            llamaModel = model.from_pretrained(
+                self.args.pretrained_model,
+                config=self.config,
+    #             output_attentions=False,
+    #             output_hidden_states=False,
+                torch_dtype=getattr(torch, 'bfloat16'),
+                low_cpu_mem_usage=True,  
+            )
+        else:
+            print("Initialising llama 2 from peft model path ....{}".format(PEFT_MODEL_PATH))
+            llamaModel = model.from_pretrained(
+                PATH_TO_CONVERTED_WEIGHTS,
+                cache_dir=mycache_dir,
+                config=self.config,
+    #             output_attentions=False,
+    #             output_hidden_states=False,
+                torch_dtype=getattr(torch, 'bfloat16'),
+                low_cpu_mem_usage=True,  
+            )
+            #self.model = PeftModel.from_pretrained(llamaModel,PEFT_MODEL_PATH)
+        print("----- Loaded model in datatype --- ", getattr(torch, 'bfloat16'))
+        peft_config = LoraConfig(
+            task_type=TaskType.SEQ_CLS,
+            target_modules=target_modules,
+            inference_mode=False,
+            r=self.args.lora_rank, lora_alpha=self.args.lora_alpha,
+            lora_dropout=lora_dropout,
+            modules_to_save=mod_to_save)
+        print("#### PEFT config ####")
+        print(peft_config)
+        #print(self.config)
+        print("####")
+        self.model = get_peft_model(llamaModel, peft_config)
+        self.model.print_trainable_parameters()
+
+        for param in self.model.parameters():
+            # Check if parameter dtype is  Float (float32)
+            if param.dtype == torch.float32 or param.dtype == torch.float16 :
+                param.data = param.data.to(torch.bfloat16)
+
+        # self.model = model.from_pretrained(self.args.pretrained_model, config=self.config)
         self.config.vocab_size = total_token_num
         self.model.resize_token_embeddings(total_token_num)
-
+        
         # load model to device
+        print("Model loaded on device ------ ",self.args.device)
         self.model.to(self.args.device)
 
     def _init_optimizer(self):
@@ -267,23 +368,64 @@ class TaskRunner(object):
 
     def _init_trained_model(self):
         """initialize a fine-tuned model for prediction"""
-        dir_list = [d for d in self.new_model_dir_path.iterdir() if d.is_dir()]
-        latest_ckpt_dir = sorted(dir_list, key=lambda x: int(x.stem.split("_")[-1]))[-1]
-
-        self.args.logger.info("Init model from {} for prediction".format(latest_ckpt_dir))
-
+        self.args.logger.info("Init trained model...")
         model, config, tokenizer = self.model_dict[self.args.model_type]
+        
+        if(self.args.model_type=="llama"): 
+            
+            latest_ckpt_dir = Path(self.args.ckpt_dir)
+            # load label2idx
+            self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")
+            self.args.logger.info("Init model from {} for prediction".format(self.args.pretrained_model))
+            num_labels = len(self.label2idx)
+            print("Loading model and tokeniser from provided path:", latest_ckpt_dir)
+            self.config = config.from_pretrained(latest_ckpt_dir)
+            print(self.config) 
+            self.tokenizer = tokenizer.from_pretrained(latest_ckpt_dir, do_lower_case=self.args.do_lower_case)
+            if getattr(self.tokenizer, "pad_token_id") is None:
+                print("assigning custom pad token ---> ", self.tokenizer.eos_token_id)
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+            #self.config = PeftConfig.from_pretrained(latest_ckpt_dir,task_type=TaskType.SEQ_CLS)
+            llamaModel = model.from_pretrained(
+                                    PATH_TO_CONVERTED_WEIGHTS,
+                                    cache_dir=mycache_dir,
+                                    num_labels=num_labels,
+#                                     config=self.config,
+                        #             output_attentions=False,
+                        #             output_hidden_states=False,
+                                    torch_dtype=getattr(torch, 'bfloat16'),
+                                    low_cpu_mem_usage=True,  
+                                )
+            print("#### PEFT CONFIG \#####")
+            print(self.config)
+            print("####")
+#             peft_config=PeftConfig.from_pretrained(latest_ckpt_dir)
+            llamaModel = llamaModel.resize_token_embeddings(len(self.tokenizer))
+            self.model = PeftModel.from_pretrained(llamaModel,latest_ckpt_dir,config=self.config)
+            self.model.resize_token_embeddings(len(self.tokenizer))
+        
+            for param in self.model.parameters():
+                # Check if parameter dtype is  Float (float32)
+                if param.dtype == torch.float32 or param.dtype == torch.float16 :
+                    param.data = param.data.to(torch.bfloat16)    
+        else:
+            self.args.logger.info("Init model from {} for prediction".format(latest_ckpt_dir))
+            dir_list = [d for d in self.new_model_dir_path.iterdir() if d.is_dir()]
+            latest_ckpt_dir = sorted(dir_list, key=lambda x: int(x.stem.split("_")[-1]))[-1]
+            self.config = config.from_pretrained(latest_ckpt_dir)
+            # compatibility check for config arguments
+            if not (self.config.to_dict().get(CONFIG_VERSION_NAME, None) == VERSION):
+                self.config.update(NEW_ARGS)
 
-        self.config = config.from_pretrained(latest_ckpt_dir)
-        # compatibility check for config arguments
-        if not (self.config.to_dict().get(CONFIG_VERSION_NAME, None) == VERSION):
-            self.config.update(NEW_ARGS)
+            self.tokenizer = tokenizer.from_pretrained(latest_ckpt_dir, do_lower_case=self.args.do_lower_case)
+            if getattr(self.tokenizer, "pad_token_id") is None:
+                print("assigning EOS token as PAD token ---> ", self.tokenizer.eos_token_id)
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
-        self.tokenizer = tokenizer.from_pretrained(latest_ckpt_dir, do_lower_case=self.args.do_lower_case)
-        self.model = model.from_pretrained(latest_ckpt_dir, config=self.config)
+            self.model = model.from_pretrained(latest_ckpt_dir, config=self.config)
 
-        # load label2idx
-        self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")
+            # load label2idx
+            self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")
         # load model to device
         self.model.to(self.args.device)
 
@@ -321,19 +463,24 @@ class TaskRunner(object):
         temp_loss = .0
         # set model to evaluate mode
         self.model.eval()
+        accelerator = Accelerator()
+        data_loader, self.model = accelerator.prepare(data_loader, self.model)
 
         # create dev data batch iteration
         batch_iter = tqdm(data_loader, desc="Batch", disable=not self.args.progress_bar)
         total_sample_num = len(batch_iter)
         preds = None
-
         for batch in batch_iter:
             batch_input = batch_to_model_input(batch, model_type=self.args.model_type, device=self.args.device)
             with torch.no_grad():
+#                 print("#########")
+#                 print(batch_input)
+#                 print("#########")
                 batch_output = self.model(**batch_input)
                 loss, logits = batch_output[:2]
                 temp_loss += loss.item()
-                logits = logits.detach().cpu().numpy()
+                #wandb.log({"test_loss/step": }, step=t_step) 
+                logits = logits.detach().cpu().to(torch.float16).numpy()
                 if preds is None:
                     preds = logits
                 else:
@@ -431,6 +578,9 @@ class TaskRunner(object):
         if self.args.do_predict and self.test_data_loader is None:
             test_examples = self._check_cache(task="test")
             # example2feature
+            print("label2idx in test data loader::::::")
+            print(self.label2idx)
+            print("use binary classi:", self.args.use_binary_classification_mode)
             test_features = convert_examples_to_relation_extraction_features(
                 test_examples,
                 tokenizer=self.tokenizer,
