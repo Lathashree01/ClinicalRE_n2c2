@@ -248,10 +248,10 @@ class SingleEvaluator(object):
             for g in gol:
                 if not len([s for s in sys if s.equals(g, mode)]):
                     fns.add(g)
-            for e in fps:
-                print('FP: ' + str(e))
-            for e in fns:
-                print('FN:' + str(e))
+            # for e in fps:
+            #     print('FP: ' + str(e))
+            # for e in fns:
+            #     print('FN:' + str(e))
         if track == 2:
             if key:
                 gol = [r for r in doc1.relations.values() if r.rtype == key]
@@ -315,20 +315,24 @@ class MultipleEvaluator(object):
                                 'tn': 0,
                                 'micro': {'precision': 0,
                                           'recall': 0,
-                                          'f1': 0},
+                                          'f1': 0,
+                                          'auc':0},
                                 'macro': {'precision': 0,
                                           'recall': 0,
-                                          'f1': 0}},
+                                          'f1': 0,
+                                          'auc':0}},
                        'relations': {'tp': 0,
                                      'fp': 0,
                                      'fn': 0,
                                      'tn': 0,
                                      'micro': {'precision': 0,
                                                'recall': 0,
-                                               'f1': 0},
+                                               'f1': 0,
+                                               'auc':0},
                                      'macro': {'precision': 0,
                                                'recall': 0,
-                                               'f1': 0}}}
+                                               'f1': 0,
+                                               'auc':0}}}
 
         for g, s in corpora.docs:
             evaluator = SingleEvaluator(g, s, 2, mode, tag_type, verbose=verbose)
@@ -339,7 +343,7 @@ class MultipleEvaluator(object):
                                     fp=evaluator.scores[target]['fp'],
                                     fn=evaluator.scores[target]['fn'],
                                     tn=evaluator.scores[target]['tn'])
-                for score in ('precision', 'recall', 'f1'):
+                for score in ('precision', 'recall', 'f1', 'auc'):
                     fn = getattr(measures, score)
                     self.scores[target]['macro'][score] += fn()
 
@@ -369,12 +373,7 @@ def evaluate(corpora, annotations, mode='strict', verbose=False):
     evaluator_l = MultipleEvaluator(corpora, gs_tags, gs_rels, mode='lenient', verbose=verbose)
     print('{:*^70}'.format(' Information Extraction Results '))
     print('{:20}  {:-^22}    {:-^22}'.format('', ' strict ', ' lenient '))
-    print('{:20}  {:6}  {:6}  {:6}    {:6}  {:6}  {:6}'.format('', 'Prec.',
-                                                               'Rec.',
-                                                               'F(b=1)',
-                                                               'Prec.',
-                                                               'Rec.',
-                                                               'F(b=1)'))
+    print('{:20}  {:6}  {:6}  {:6}  {:6}    {:6}  {:6}  {:6}  {:6}'.format('', 'Prec.','Rec.','F(b=1)','AUC','Prec.','Rec.','F(b=1)','AUC'))
     for tag in evaluator_s.tags:
         evaluator_tag_s = MultipleEvaluator(corpora, gs_tags, gs_rels, tag, verbose=verbose)
         evaluator_tag_l = MultipleEvaluator(corpora, gs_tags, gs_rels, tag, mode='lenient', verbose=verbose)
@@ -387,53 +386,63 @@ def evaluate(corpora, annotations, mode='strict', verbose=False):
             evaluator_tag_l.scores['tags']['micro']['recall'],
             evaluator_tag_l.scores['tags']['micro']['f1']))
     print('{:>20}  {:-^48}'.format('', ''))
-    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
+    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
         'Overall (micro)',
         evaluator_s.scores['tags']['micro']['precision'],
         evaluator_s.scores['tags']['micro']['recall'],
         evaluator_s.scores['tags']['micro']['f1'],
+        evaluator_s.scores['tags']['micro']['auc'],
         evaluator_l.scores['tags']['micro']['precision'],
         evaluator_l.scores['tags']['micro']['recall'],
-        evaluator_l.scores['tags']['micro']['f1']))
-    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
+        evaluator_l.scores['tags']['micro']['f1'],
+        evaluator_l.scores['tags']['micro']['auc']))
+    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
         'Overall (macro)',
         evaluator_s.scores['tags']['macro']['precision'],
         evaluator_s.scores['tags']['macro']['recall'],
         evaluator_s.scores['tags']['macro']['f1'],
+        evaluator_s.scores['tags']['macro']['auc'],
         evaluator_l.scores['tags']['macro']['precision'],
         evaluator_l.scores['tags']['macro']['recall'],
-        evaluator_l.scores['tags']['macro']['f1']))
+        evaluator_l.scores['tags']['macro']['f1'],
+        evaluator_l.scores['tags']['macro']['auc']))
     print()
 
     print('{:*^70}'.format(' RELATIONS '))
     for rel in evaluator_s.relations:
         evaluator_tag_s = MultipleEvaluator(corpora, gs_tags, gs_rels, rel, mode='strict', verbose=verbose)
         evaluator_tag_l = MultipleEvaluator(corpora, gs_tags, gs_rels, rel, mode='lenient', verbose=verbose)
-        print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
+        print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
             rel,
             evaluator_tag_s.scores['relations']['micro']['precision'],
             evaluator_tag_s.scores['relations']['micro']['recall'],
             evaluator_tag_s.scores['relations']['micro']['f1'],
+            evaluator_tag_s.scores['relations']['micro']['auc'],
             evaluator_tag_l.scores['relations']['micro']['precision'],
             evaluator_tag_l.scores['relations']['micro']['recall'],
-            evaluator_tag_l.scores['relations']['micro']['f1']))
+            evaluator_tag_l.scores['relations']['micro']['f1'],
+            evaluator_tag_l.scores['relations']['micro']['auc']))
     print('{:>20}  {:-^48}'.format('', ''))
-    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
+    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
         'Overall (micro)',
         evaluator_s.scores['relations']['micro']['precision'],
         evaluator_s.scores['relations']['micro']['recall'],
         evaluator_s.scores['relations']['micro']['f1'],
+        evaluator_s.scores['relations']['micro']['auc'],
         evaluator_l.scores['relations']['micro']['precision'],
         evaluator_l.scores['relations']['micro']['recall'],
-        evaluator_l.scores['relations']['micro']['f1']))
-    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
+        evaluator_l.scores['relations']['micro']['f1'],
+        evaluator_l.scores['relations']['micro']['auc']))
+    print('{:>20}  {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}    {:<5.4f}  {:<5.4f}  {:<5.4f}  {:<5.4f}'.format(
         'Overall (macro)',
         evaluator_s.scores['relations']['macro']['precision'],
         evaluator_s.scores['relations']['macro']['recall'],
         evaluator_s.scores['relations']['macro']['f1'],
+        evaluator_s.scores['relations']['micro']['auc'],
         evaluator_l.scores['relations']['macro']['precision'],
         evaluator_l.scores['relations']['macro']['recall'],
-        evaluator_l.scores['relations']['macro']['f1']))
+        evaluator_l.scores['relations']['macro']['f1'],
+        evaluator_s.scores['relations']['micro']['auc']))
     print()
     print('{:20}{:^48}'.format('', '  {} files found  '.format(len(corpora.docs))))
 

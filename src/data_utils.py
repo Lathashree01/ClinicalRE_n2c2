@@ -144,8 +144,8 @@ def relation_extraction_data_loader(dataset, batch_size=2, task='train', logger=
 def batch_to_model_input(batch, model_type="bert", device=torch.device("cpu")):
     return {"input_ids": batch[0].to(device),
             "attention_mask": batch[1].to(device),
-            "labels": batch[3].to(device),
-            "token_type_ids": batch[2].to(device) if model_type in MODEL_REQUIRE_SEGMENT_ID else None}
+            "labels": batch[3].to(device)}
+#             "token_type_ids": batch[2].to(device) if model_type in MODEL_REQUIRE_SEGMENT_ID else None}
 
 
 class DataProcessor(object):

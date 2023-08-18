@@ -16,9 +16,9 @@ from pathlib import Path
 import argparse
 import numpy as np
 from utils import TransformerLogger
-from data_processing.io_utils import load_text, save_text, pkl_load
+from io_utils import load_text, save_text, pkl_load
 from collections import defaultdict
-from data_processing.data_format_conf import NON_RELATION_TAG, BRAT_REL_TEMPLATE
+from data_format_conf import NON_RELATION_TAG, BRAT_REL_TEMPLATE
 import traceback
 
 
@@ -33,7 +33,6 @@ def load_mappings(map_file):
             continue
         info = line.split("\t")
         maps.append(info[-3:])
-
     return maps
 
 
@@ -47,6 +46,8 @@ def load_predictions(result_file):
 
 
 def map_results(res):
+    
+    print("mapping results...")
     mapped_preds = defaultdict(list)
     prev_fid = "no previous file id"
     rel_idx = 1
@@ -60,6 +61,7 @@ def map_results(res):
         mapped_preds[fid].append(brat_res)
         rel_idx += 1
 
+    print(len(mapped_preds))
     return mapped_preds
 
 
@@ -68,10 +70,11 @@ def output_results(mapped_predictions, entity_data_dir, output_dir):
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
+    print("in output results..entity_data_dir is", entity_data_dir)
     for fid in entity_data_dir.glob("*.ann"):
         fid_key = fid.stem
         ofn = output_dir / "{}.ann".format(fid_key)
+#         print(ofn)
         entities = load_text(fid).strip()
         if fid_key in mapped_predictions:
             rels = mapped_predictions[fid_key]
@@ -86,13 +89,16 @@ def output_results(mapped_predictions, entity_data_dir, output_dir):
 
 
 def combine_maps_predictions_mul(args):
+    
     comb_map_pred = []
-
+    print(args.test_data_file, args.predict_result_file)
     for mf, pf in zip(args.test_data_file, args.predict_result_file):
+        print("combining data here...")
         maps = load_mappings(mf)
         preds = load_predictions(pf)
         llp = len(preds)
         llm = len(maps)
+        print(llp, llm)
         assert llp == llm, \
             f"prediction results and mappings should have same amount data, but got preds: {llp} and maps: {llm}"
         for m, rel_type in zip(maps, preds):
@@ -100,7 +106,8 @@ def combine_maps_predictions_mul(args):
                 continue
             arg1, arg2, fid = m
             comb_map_pred.append((fid, rel_type, arg1, arg2))
-
+    
+    print(len(comb_map_pred))
     comb_map_pred.sort(key=lambda x: x[0])
     return comb_map_pred
 
@@ -173,6 +180,7 @@ def app(args):
 
     try:
         combined_results = map_results(combined_results)
+        print("In app...", len(combined_results))
         output_results(combined_results, args.entity_data_dir, args.brat_result_output_dir)
     except Exception as ex:
         traceback.print_exc()
