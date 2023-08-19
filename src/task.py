@@ -41,7 +41,7 @@ loss_filename="/final_loss_dict.pickle"
 
 # PATH_TO_CONVERTED_WEIGHTS="/rds/general/user/l22/home/llama-hf/"
 PATH_TO_CONVERTED_WEIGHTS='meta-llama/Llama-2-7b-hf'
-
+PATH_TO_CONVERTED_WEIGHTS='/vol/bitbucket/l22/llama_model/llama1'
 PEFT_MODEL_PATH='/vol/bitbucket/l22/llama2_bkup/checkpoint-16000/pt_lora_model/'
 # PEFT_PATH="/rds/general/user/l22/home/git_repos/thesis/llama2_output_dir/checkpoint-16000/pt_lora_model"
 
@@ -296,9 +296,21 @@ class TaskRunner(object):
                 torch_dtype=getattr(torch, 'bfloat16'),
                 low_cpu_mem_usage=True,  
             )
+            print("----- Loaded model in datatype --- ", getattr(torch, 'bfloat16'))
+            peft_config = LoraConfig(
+            	task_type=TaskType.SEQ_CLS,
+            	target_modules=target_modules,
+            	inference_mode=False,
+            	r=self.args.lora_rank, lora_alpha=self.args.lora_alpha,
+            	lora_dropout=lora_dropout,
+            	modules_to_save=mod_to_save)
+            print("#### PEFT config ####")
+            print(peft_config)
+            print("####")
+            self.model = get_peft_model(llamaModel, peft_config)
         else:
             llamaModel = model.from_pretrained(
-                PATH_TO_CONVERTED_WEIGHTS,
+                self.args.pretrained_model,
                 cache_dir=mycache_dir,
                 config=self.config,
     #             output_attentions=False,
