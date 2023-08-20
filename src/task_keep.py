@@ -32,18 +32,20 @@ os.environ["WANDB_ENTITY"]="lathashree01"
 os.environ["WANDB_PROJECT"]="final_ft_pretrain_llama2"
 
 
-# hard coded params
 mycache_dir="/vol/bitbucket/l22/llama2"
+#mycache_dir="/rds/general/user/l22/home/llama_2/"
+
+# data_path='/rds/general/user/l22/home/git_repos/thesis/datasets/'
+
 loss_filename="/final_loss_dict.pickle"
 
-# Pretrained LLAMA 1
-# LLAMA1_PEFT_MODEL_PATH='/vol/bitbucket/l22/llama1_pretrained/pt_lora_model'
+# PATH_TO_CONVERTED_WEIGHTS="/rds/general/user/l22/home/llama-hf/"
+PATH_TO_CONVERTED_WEIGHTS='meta-llama/Llama-2-7b-hf'
+PATH_TO_CONVERTED_WEIGHTS='/vol/bitbucket/l22/llama_model/llama1'
+PEFT_MODEL_PATH='/vol/bitbucket/l22/llama2_bkup/checkpoint-16000/pt_lora_model/'
+# PEFT_PATH="/rds/general/user/l22/home/git_repos/thesis/llama2_output_dir/checkpoint-16000/pt_lora_model"
 
-# Pretrained LLAMA 2
-# LLAMA2_PEFT_MODEL_PATH='/vol/bitbucket/l22/llama2_pretrained/pt_lora_model'
-
-
-lora_trainable="q_proj,v_proj,k_proj"
+lora_trainable="q_proj,v_proj,k_proj,o_proj"
 modules_to_save="embed_tokens,lm_head"
 lora_dropout=0.05
 target_modules = lora_trainable.split(',')
@@ -238,7 +240,7 @@ class TaskRunner(object):
         print("Setting pd_token_______________________")
         
         if getattr(self.tokenizer, "pad_token_id") is None:
-            print("assigning custom pad token ---> ", self.tokenizer.eos_token_id)
+#             print("assigning custom pad token ---> ", self.tokenizer.eos_token_id)
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
             
         last_token_idx = len(self.tokenizer)
@@ -286,73 +288,50 @@ class TaskRunner(object):
                 f"using sample weights: {label_id2freq} and converted weight matrix is {self.config.sample_weights}")
         # init model
         if(self.args.model_type=="llama1"):
-            print("Initialising llama 1 with new peft model ....")
             llamaModel = model.from_pretrained(
                 self.args.pretrained_model,
                 config=self.config,
+    #             output_attentions=False,
+    #             output_hidden_states=False,
                 torch_dtype=getattr(torch, 'bfloat16'),
                 low_cpu_mem_usage=True,  
             )
+            print("----- Loaded model in datatype --- ", getattr(torch, 'bfloat16'))
             peft_config = LoraConfig(
-                task_type=TaskType.SEQ_CLS,
-                target_modules=target_modules,
-                inference_mode=False,
-                r=self.args.lora_rank, lora_alpha=self.args.lora_alpha,
-                lora_dropout=lora_dropout,
-                modules_to_save=mod_to_save)
-            print("#### NEW PEFT config ####")
+            	task_type=TaskType.SEQ_CLS,
+            	target_modules=target_modules,
+            	inference_mode=False,
+            	r=self.args.lora_rank, lora_alpha=self.args.lora_alpha,
+            	lora_dropout=lora_dropout,
+            	modules_to_save=mod_to_save)
+            print("#### PEFT config ####")
             print(peft_config)
-            print(self.config)
             print("####")
             self.model = get_peft_model(llamaModel, peft_config)
-        elif(self.args.model_type=="llama2"):
-            print("Initialising llama 2 with new peft model ....")
-            llamaModel = model.from_pretrained(
-                self.args.pretrained_model,
-                cache_dir=mycache_dir,
-                config=self.config,
-                torch_dtype=getattr(torch, 'bfloat16'),
-                low_cpu_mem_usage=True,  
-            )
-            peft_config = LoraConfig(
-                task_type=TaskType.SEQ_CLS,
-                target_modules=target_modules,
-                inference_mode=False,
-                r=self.args.lora_rank, lora_alpha=self.args.lora_alpha,
-                lora_dropout=lora_dropout,
-                modules_to_save=mod_to_save)
-            print("#### NEW PEFT config ####")
-            print(peft_config)
-            print(self.config)
-            print("####")
-            self.model = get_peft_model(llamaModel, peft_config)
-        elif(self.args.model_type=="llama1_pre"):
-            print("Initialising llama 1 from peft model path ....{}".format(LLAMA1_PEFT_MODEL_PATH))
-            llamaModel = model.from_pretrained(
-                self.args.pretrained_model,
-                config=self.config,
-                torch_dtype=getattr(torch, 'bfloat16'),
-                low_cpu_mem_usage=True,  
-            )
-            self.model = PeftModel.from_pretrained(llamaModel,LLAMA1_PEFT_MODEL_PATH)
-            print("#### Loaded PEFT config ####")
-            print(self.config)
-            print("####")
         else:
-            print("Initialising llama 2 from peft model path ....{}".format(LLAMA2_PEFT_MODEL_PATH))
             llamaModel = model.from_pretrained(
                 self.args.pretrained_model,
                 cache_dir=mycache_dir,
                 config=self.config,
+    #             output_attentions=False,
+    #             output_hidden_states=False,
                 torch_dtype=getattr(torch, 'bfloat16'),
                 low_cpu_mem_usage=True,  
             )
-            self.model = PeftModel.from_pretrained(llamaModel,LLAMA2_PEFT_MODEL_PATH)
-            print("#### Loaded PEFT config ####")
-            print(self.config)
-            print("####")
             
         print("----- Loaded model in datatype --- ", getattr(torch, 'bfloat16'))
+        peft_config = LoraConfig(
+            task_type=TaskType.SEQ_CLS,
+            target_modules=target_modules,
+            inference_mode=False,
+            r=self.args.lora_rank, lora_alpha=self.args.lora_alpha,
+            lora_dropout=lora_dropout,
+            modules_to_save=mod_to_save)
+        print("#### PEFT config ####")
+        print(peft_config)
+        print("####")
+        self.model = get_peft_model(llamaModel, peft_config)
+#         self.model = PeftModel.from_pretrained(self.model, PEFT_PATH, adapter_name='clini_llama', is_trainable=False)
         self.model.print_trainable_parameters()
 
         for param in self.model.parameters():
@@ -363,7 +342,6 @@ class TaskRunner(object):
         # self.model = model.from_pretrained(self.args.pretrained_model, config=self.config)
         self.config.vocab_size = total_token_num
         self.model.resize_token_embeddings(total_token_num)
-        print("Model resized to {}".format(total_token_num))
         
         # load model to device
         print("Model loaded on device ------ ",self.args.device)
@@ -405,33 +383,46 @@ class TaskRunner(object):
         
         if(self.args.model_type=="llama"): 
             latest_ckpt_dir = Path(self.args.ckpt_dir)
+
             # load label2idx
             self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")
             self.args.logger.info("Init model from {} for prediction".format(self.args.pretrained_model))
             num_labels = len(self.label2idx)
             print("Loading model and tokeniser from provided path:", latest_ckpt_dir)
-            self.config = config.from_pretrained(latest_ckpt_dir)
-            
+#             self.config = PeftConfig.from_pretrained(latest_ckpt_dir, )
+
+#             self.config.task_type=TaskType.SEQ_CLS
             self.tokenizer = tokenizer.from_pretrained(latest_ckpt_dir, do_lower_case=self.args.do_lower_case)
+            
+            last_token_idx = len(self.tokenizer)
+            self.tokenizer.add_tokens(SPEC_TAGS)
+            spec_token_new_ids = tuple([(last_token_idx + idx) for idx in range(len(self.tokenizer) - last_token_idx)])
+            total_token_num = len(self.tokenizer)
+            
+            self.config = config.from_pretrained(latest_ckpt_dir, num_labels=num_labels)
+            
             if getattr(self.tokenizer, "pad_token_id") is None:
                 print("assigning custom pad token ---> ", self.tokenizer.eos_token_id)
                 self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-            self.config = PeftConfig.from_pretrained(latest_ckpt_dir,task_type=TaskType.SEQ_CLS)
+            print(f"New tokeniser length {len(self.tokenizer)}")
             llamaModel = model.from_pretrained(
                                     self.args.pretrained_model,
                                     cache_dir=mycache_dir,
-                                    num_labels=num_labels,
-#                                     config=self.config,
+                                    config=self.config,
                         #             output_attentions=False,
                         #             output_hidden_states=False,
                                     torch_dtype=getattr(torch, 'bfloat16'),
                                     low_cpu_mem_usage=True,  
                                 )
-            print("#### PEFT CONFIG \#####")
+            
+            print("#### llamaModel CONFIG \#####")
             print(self.config)
             print("####")
-#             peft_config=PeftConfig.from_pretrained(latest_ckpt_dir)
-            self.model = PeftModel.from_pretrained(llamaModel,latest_ckpt_dir,config=self.config)
+#             print("#### PEFT CONFIG \#####")
+#             print(peft_config)
+#             print("####")
+            llamaModel.resize_token_embeddings(len(self.tokenizer))
+            self.model = PeftModel.from_pretrained(llamaModel,latest_ckpt_dir)
             self.model.resize_token_embeddings(len(self.tokenizer))
         
             for param in self.model.parameters():
@@ -439,9 +430,10 @@ class TaskRunner(object):
                 if param.dtype == torch.float32 or param.dtype == torch.float16 :
                     param.data = param.data.to(torch.bfloat16)    
         else:
+            latest_ckpt_dir = Path(self.args.ckpt_dir)
             self.args.logger.info("Init model from {} for prediction".format(latest_ckpt_dir))
-            dir_list = [d for d in self.new_model_dir_path.iterdir() if d.is_dir()]
-            latest_ckpt_dir = sorted(dir_list, key=lambda x: int(x.stem.split("_")[-1]))[-1]
+#             dir_list = [d for d in self.new_model_dir_path.iterdir() if d.is_dir()]
+#             latest_ckpt_dir = sorted(dir_list, key=lambda x: int(x.stem.split("_")[-1]))[-1]
             self.config = config.from_pretrained(latest_ckpt_dir)
             # compatibility check for config arguments
             if not (self.config.to_dict().get(CONFIG_VERSION_NAME, None) == VERSION):
@@ -452,7 +444,19 @@ class TaskRunner(object):
                 print("assigning EOS token as PAD token ---> ", self.tokenizer.eos_token_id)
                 self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
-            self.model = model.from_pretrained(latest_ckpt_dir, config=self.config)
+#             self.model = model.from_pretrained(latest_ckpt_dir, config=self.config)
+            self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")
+            self.args.logger.info("Init model from {} for prediction".format(self.args.pretrained_model))
+            num_labels = len(self.label2idx)
+            self.model = model.from_pretrained(
+                PATH_TO_CONVERTED_WEIGHTS,
+            #     cache_dir=mycache_dir,
+                num_labels=8,
+                output_attentions=False,
+                output_hidden_states=False,
+                torch_dtype=getattr(torch, 'bfloat16'),
+                low_cpu_mem_usage=True,
+            ) 
 
             # load label2idx
             self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")

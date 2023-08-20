@@ -18,8 +18,10 @@ SPEC_TAGS = [EN1_START, EN1_END, EN2_START, EN2_END]
 MODEL_REQUIRE_SEGMENT_ID = {'llama','bert', 'xlnet', 'albert', 'deberta', 'megatron'}
 
 MODEL_DICT = {
-    "llama":(LlamaForSequenceClassification, LlamaConfig, LlamaTokenizer),
+    "llama2":(LlamaForSequenceClassification, LlamaConfig, LlamaTokenizer),
     "llama1":(LlamaForSequenceClassification, LlamaConfig, LlamaTokenizer),
+    "llama1_pre":(LlamaForSequenceClassification, LlamaConfig, LlamaTokenizer),
+    "llama2_pre":(LlamaForSequenceClassification, LlamaConfig, LlamaTokenizer),
     "bert": (BertForRelationIdentification, BertConfig, BertTokenizer),
     "megatron": (MegatronForRelationIdentification, MegatronBertConfig, BertTokenizer),
     "roberta": (RoBERTaForRelationIdentification, RobertaConfig, RobertaTokenizer),
