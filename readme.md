@@ -1,4 +1,18 @@
-# Unified Framework for Clinical Relation Extraction
+# A Unified Framework for Clinical Relation Extraction
+This repository is created as part of work in - https://github.com/Lathashree01/LlamaClinicalRE.
+In this project, we perform domain adaptive pretraining of LLAMA models to the clinical domain. The clinical language understanding is evaluated based on evaluation datasets.
+This repository is used to evaluate on n2c2 2018 dataset.
+
+## Added support for models
+- LLaMA 1
+- LLaMA 2
+- Our clinical LLaMA models
+
+_______________________________________________________________________________________________________
+
+
+## Original Work
+Original repository: https://github.com/uf-hobi-informatics-lab/ClinicalTransformerRelationExtraction
 
 ## Aim
 This package is developed for researchers to easily use state-of-the-art transformer models for extracting relations from clinical notes. 
@@ -8,18 +22,6 @@ No prior knowledge of transformers is required. We handle the whole process, fro
 The package is built on top of the Transformers developed by the HuggingFace. 
 We have the requirement.txt to specify the packages required to run the project.
 
-## Background
-Original repository: https://github.com/uf-hobi-informatics-lab/ClinicalTransformerRelationExtraction
-
-## Further development
-This repository is attributed to - https://github.com/Lathashree01/LlamaClinicalRE.
-In this project, we perform domain adaptive pretraining of LLAMA models to the clinical domain. The clinical language understanding is evaluated based on evaluation datasets.
-This repository is used to evaluate on n2c2 2018 dataset.
-
-## Base models
-- LLaMA 1
-- LLaMA 2
-- Our clinical LLaMA models
 
 
 ## Usage and example
