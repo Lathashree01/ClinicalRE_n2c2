@@ -78,10 +78,14 @@ config.py
 > Please refer to the original page for all details of the parameters
 > [flag details](https://github.com/uf-hobi-informatics-lab/ClinicalTransformerRelationExtraction/wiki/all-parameters)
 
+```
 sh run_training.sh
+```
 
 - prediction
+```
 sh run_testing.sh
+```
 
 - post-processing (we only support transformation to brat format)
 ```shell script
