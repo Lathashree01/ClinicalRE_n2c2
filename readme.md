@@ -23,10 +23,9 @@ The package is built on top of the Transformers developed by the HuggingFace.
 We have the requirement.txt to specify the packages required to run the project.
 
 
-
 ## Usage and example
 - prerequisite
-> The package is only for relation extraction, thus, the entities must be provided. 
+> The package is only for relation extraction. Thus, the entities must be provided. 
 > You have to conduct NER first to get all entities, then run this package to get the end-to-end relation extraction results
 
 - data format
@@ -74,18 +73,18 @@ If you need to customize these tags, you can change them in
 config.py
 ```
 
-- training
-> Please refer to the original page for all details of the parameters
+## Usage
+
+- training and prediction
+  
+> Please refer to the original page for all details of the parameters, some additional parameters related to LoRA peft are added in this project
 > [flag details](https://github.com/uf-hobi-informatics-lab/ClinicalTransformerRelationExtraction/wiki/all-parameters)
 
 ```
-sh run_training.sh
+sh run_train_test.sh
 ```
 
-- prediction
-```
-sh run_testing.sh
-```
+Please note: Sample slurm scripts are also provided.
 
 - post-processing (we only support transformation to brat format)
 ```shell script
