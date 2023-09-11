@@ -7,5 +7,5 @@ export PATH=/vol/bitbucket/l22/ufcode/bin/:$PATH
 source activate
 source /vol/cuda/11.0.3-cudnn8.0.5.39/setup.sh
 
-sh latha_run_training_cutoff1.sh
+sh run_training.sh
 
