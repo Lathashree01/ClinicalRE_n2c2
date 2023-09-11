@@ -1,12 +1,16 @@
 # A Unified Framework for Clinical Relation Extraction
 This repository is created as part of work in - https://github.com/Lathashree01/LlamaClinicalRE.
 In this project, we perform domain adaptive pretraining of LLAMA models to the clinical domain. The clinical language understanding is evaluated based on evaluation datasets.
-This repository is used to evaluate on n2c2 2018 dataset.
+
+
+** This repository is used to evaluate the original LLaMA models and our clinical LLaMA models n2c2 2018 dataset RE dataset.
 
 ## Added support for models
 - LLaMA 1
 - LLaMA 2
 - Our clinical LLaMA models
+
+(Please download original LLaMA 1 and LLaMA 2 models)  
 
 _______________________________________________________________________________________________________
 
@@ -29,7 +33,7 @@ We have the requirement.txt to specify the packages required to run the project.
 > You have to conduct NER first to get all entities, then run this package to get the end-to-end relation extraction results
 
 - data format
-> see sample_data dir (train.tsv and test.tsv) for the train and test data format
+> See sample_data dir (train.tsv and test.tsv) for the train and test data format
 
 > The sample data is a small subset of the data prepared from the 2018 umass made1.0 challenge corpus
 
@@ -44,12 +48,12 @@ We have the requirement.txt to specify the packages required to run the project.
 7. entity_id2: T2
 8. file_id: 13_10
 
-note: 
+Note: 
 1) the entity between [s1][e1] is the first entity in a relation; the second entity in the relation is inbetween [s2][e2]
-2) even the two entities in the same sentenc, we still require to put them separately
-3) in the test.tsv, you can set all labels to neg or no_relation or whatever, because we will not use the label anyway
-4) We recommend to evaluate the test performance in a separate process based on prediction. (see **post-processing**)
-5) We recommend using official evaluation scripts to do evaluation to make sure the results reported are reliable.
+2) Even the two entities are in the same sentence, we still require to put them separately
+3) in the test.tsv, you can set all labels to neg or no_relation or whatever because we will not use the label anyway
+4) We recommend evaluating the test performance in a separate process based on prediction. (see **post-processing**)
+5) We recommend using official evaluation scripts to do an evaluation to make sure the results reported are reliable.
 ```
 
 - preprocess data (see the preprocess.ipynb script for more details on usage)
@@ -75,9 +79,9 @@ config.py
 
 ## Usage
 
-- training and prediction
+- Training and prediction
   
-> Please refer to the original page for all details of the parameters, some additional parameters related to LoRA peft are added in this project
+> Please refer to the original page for all details of the parameters, Some additional parameters related to LoRA peft are added in this project
 > [flag details](https://github.com/uf-hobi-informatics-lab/ClinicalTransformerRelationExtraction/wiki/all-parameters)
 
 ```
