@@ -11,8 +11,7 @@ from utils import acc_and_f1
 from data_processing.io_utils import pkl_save, pkl_load, save_json
 from transformers import glue_convert_examples_to_features as convert_examples_to_relation_extraction_features
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
-from peft import LoraConfig, TaskType, get_peft_model
-from peft import PeftModel, PeftConfig
+from peft import LoraConfig, TaskType, get_peft_model, PeftModel, PeftConfig
 import torch
 from tqdm import trange, tqdm
 import numpy as np
@@ -27,7 +26,7 @@ from accelerate import Accelerator
 # from transformers.deepspeed import HfDeepSpeedConfig
 #import deepspeed
 
-os.environ["WANDB_API_KEY"]="2fa1c59c587d4cb7dd76f14eebcc6475ce169564"
+os.environ["WANDB_API_KEY"]=""
 os.environ["WANDB_ENTITY"]="lathashree01"
 os.environ["WANDB_PROJECT"]="final_ft_pretrain_llama2"
 
@@ -37,10 +36,10 @@ mycache_dir="/vol/bitbucket/l22/llama2"
 loss_filename="/final_loss_dict.pickle"
 
 # Pretrained LLAMA 1
-# LLAMA1_PEFT_MODEL_PATH='/vol/bitbucket/l22/llama1_pretrained/pt_lora_model'
+LLAMA1_PEFT_MODEL_PATH='/vol/bitbucket/l22/llama1_pretrained/pt_lora_model'
 
 # Pretrained LLAMA 2
-# LLAMA2_PEFT_MODEL_PATH='/vol/bitbucket/l22/llama2_pretrained/pt_lora_model'
+LLAMA2_PEFT_MODEL_PATH='/vol/bitbucket/l22/llama2_pretrained/pt_lora_model'
 
 
 lora_trainable="q_proj,v_proj,k_proj"
@@ -113,7 +112,6 @@ class TaskRunner(object):
         tr_loss = .0
         t_step = 1
         latest_best_score = .0
-#         dschf = HfDeepSpeedConfig(ds_config) 
         accelerator = Accelerator()
         self.train_data_loader, self.model, self.optimizer = accelerator.prepare(
                             self.train_data_loader, self.model, self.optimizer
@@ -198,6 +196,7 @@ class TaskRunner(object):
         self.model = accelerator.unwrap_model(self.model)
 
         wandb.finish()
+        
         # max_num_checkpoints=0 then save at the end of training
         if self.args.max_num_checkpoints <= 0:
             self._save_model(0)
@@ -284,7 +283,8 @@ class TaskRunner(object):
                 self.config.sample_weights[k] = v
             self.args.logger.info(
                 f"using sample weights: {label_id2freq} and converted weight matrix is {self.config.sample_weights}")
-        # init model
+        
+        # init model: modified for llama1, llama2, llama1_pre, llama2_pre
         if(self.args.model_type=="llama1"):
             print("Initialising llama 1 with new peft model ....")
             llamaModel = model.from_pretrained(
@@ -352,9 +352,11 @@ class TaskRunner(object):
             print(self.config)
             print("####")
             
+
         print("----- Loaded model in datatype --- ", getattr(torch, 'bfloat16'))
         self.model.print_trainable_parameters()
 
+        # convert model to bfloat16
         for param in self.model.parameters():
             # Check if parameter dtype is  Float (float32)
             if param.dtype == torch.float32 or param.dtype == torch.float16 :
@@ -362,10 +364,11 @@ class TaskRunner(object):
 
         # self.model = model.from_pretrained(self.args.pretrained_model, config=self.config)
         self.config.vocab_size = total_token_num
+        # resize embedding layer ass we add special tokens
         self.model.resize_token_embeddings(total_token_num)
         print("Model resized to {}".format(total_token_num))
         
-        # load model to device
+        # load model to device 
         print("Model loaded on device ------ ",self.args.device)
         self.model.to(self.args.device)
 
@@ -403,45 +406,104 @@ class TaskRunner(object):
         self.args.logger.info("Init trained model...")
         model, config, tokenizer = self.model_dict[self.args.model_type]
         
-        if(self.args.model_type=="llama"): 
+        # Handle separately for (llama1 or llama1_pre) and (llama2_pre or llama2) 
+        if(self.args.model_type=="llama1_pre" or self.args.model_type=="llama1" ): 
+
+            # Use the latest checkpoint
             latest_ckpt_dir = Path(self.args.ckpt_dir)
+
             # load label2idx
             self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")
             self.args.logger.info("Init model from {} for prediction".format(self.args.pretrained_model))
             num_labels = len(self.label2idx)
-            print("Loading model and tokeniser from provided path:", latest_ckpt_dir)
-            self.config = config.from_pretrained(latest_ckpt_dir)
+            print("Loading trained model and tokeniser from provided path:", latest_ckpt_dir)
+            self.config = config.from_pretrained(latest_ckpt_dir, num_labels=num_labels)
             
             self.tokenizer = tokenizer.from_pretrained(latest_ckpt_dir, do_lower_case=self.args.do_lower_case)
+
+            last_token_idx = len(self.tokenizer)
+            self.tokenizer.add_tokens(SPEC_TAGS)
+            spec_token_new_ids = tuple([(last_token_idx + idx) for idx in range(len(self.tokenizer) - last_token_idx)])
+            total_token_num = len(self.tokenizer)
+
+            # Set the pad token is set to eos_token_id
             if getattr(self.tokenizer, "pad_token_id") is None:
                 print("assigning custom pad token ---> ", self.tokenizer.eos_token_id)
                 self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-            self.config = PeftConfig.from_pretrained(latest_ckpt_dir,task_type=TaskType.SEQ_CLS)
+            # self.config = PeftConfig.from_pretrained(latest_ckpt_dir,task_type=TaskType.SEQ_CLS)
+            self.model = model.from_pretrained(
+                                    self.args.pretrained_model,
+                                    # cache_dir=mycache_dir,
+                                    # num_labels=num_labels,
+                                    config=self.config,
+                                    torch_dtype=getattr(torch, 'bfloat16'),
+                                    low_cpu_mem_usage=True
+                                )
+            print("#### PEFT CONFIG #####")
+            print(self.config)
+            print("####")
+
+            # Uncomment when using llama1_pre model for prediction
+            # self.model = PeftModel.from_pretrained(self.model,LLAMA1_PEFT_MODEL_PATH,is_trainable=False)
+            # self.model.resize_token_embeddings(len(self.tokenizer))
+
+            self.model = PeftModel.from_pretrained(self.model,latest_ckpt_dir,config=self.config)
+            self.model.resize_token_embeddings(len(self.tokenizer))
+        
+            # convert model to bfloat16
+            for param in self.model.parameters():
+                # Check if parameter dtype is  Float (float32)
+                if param.dtype == torch.float32 or param.dtype == torch.float16 :
+                    param.data = param.data.to(torch.bfloat16)  
+
+        elif(self.args.model_type=="llama2_pre" or self.args.model_type=="llama2"): 
+            
+            # Use the latest checkpoint
+            latest_ckpt_dir = Path(self.args.ckpt_dir)
+            # load label2idx
+            self.label2idx, self.idx2label = pkl_load(latest_ckpt_dir/"label_index.pkl")
+            self.args.logger.info("Init model from base model {} for prediction".format(self.args.pretrained_model))
+            num_labels = len(self.label2idx)
+
+            print("Loading model and tokeniser from provided path:", latest_ckpt_dir)
+            self.config = config.from_pretrained(self.args.pretrained_model, num_labels=num_labels)
+            
+            self.tokenizer = tokenizer.from_pretrained(latest_ckpt_dir, do_lower_case=self.args.do_lower_case)
+            
+            # Set the pad token is set to eos_token_id
+            if getattr(self.tokenizer, "pad_token_id") is None:
+                print("assigning custom pad token ---> ", self.tokenizer.eos_token_id)
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
             llamaModel = model.from_pretrained(
                                     self.args.pretrained_model,
                                     cache_dir=mycache_dir,
-                                    num_labels=num_labels,
-#                                     config=self.config,
-                        #             output_attentions=False,
-                        #             output_hidden_states=False,
+                                    # num_labels=num_labels,
+                                    config=self.config,
                                     torch_dtype=getattr(torch, 'bfloat16'),
                                     low_cpu_mem_usage=True,  
                                 )
+            
             print("#### PEFT CONFIG \#####")
             print(self.config)
             print("####")
-#             peft_config=PeftConfig.from_pretrained(latest_ckpt_dir)
-            self.model = PeftModel.from_pretrained(llamaModel,latest_ckpt_dir,config=self.config)
+            llamaModel.resize_token_embeddings(len(self.tokenizer))
+
+            # Uncomment when using llama2_pre model for prediction  
+            # self.model = PeftModel.from_pretrained(llamaModel,LLAMA2_PEFT_MODEL_PATH, is_trainable=False)
+            # self.model.resize_token_embeddings(len(self.tokenizer))
+
+            self.model = PeftModel.from_pretrained(llamaModel,latest_ckpt_dir)
             self.model.resize_token_embeddings(len(self.tokenizer))
         
+            # convert model to bfloat16
             for param in self.model.parameters():
                 # Check if parameter dtype is  Float (float32)
                 if param.dtype == torch.float32 or param.dtype == torch.float16 :
                     param.data = param.data.to(torch.bfloat16)    
         else:
             self.args.logger.info("Init model from {} for prediction".format(latest_ckpt_dir))
-            dir_list = [d for d in self.new_model_dir_path.iterdir() if d.is_dir()]
-            latest_ckpt_dir = sorted(dir_list, key=lambda x: int(x.stem.split("_")[-1]))[-1]
+            # dir_list = [d for d in self.new_model_dir_path.iterdir() if d.is_dir()]
+            # latest_ckpt_dir = sorted(dir_list, key=lambda x: int(x.stem.split("_")[-1]))[-1]
             self.config = config.from_pretrained(latest_ckpt_dir)
             # compatibility check for config arguments
             if not (self.config.to_dict().get(CONFIG_VERSION_NAME, None) == VERSION):
@@ -503,9 +565,6 @@ class TaskRunner(object):
         for batch in batch_iter:
             batch_input = batch_to_model_input(batch, model_type=self.args.model_type, device=self.args.device)
             with torch.no_grad():
-#                 print("#########")
-#                 print(batch_input)
-#                 print("#########")
                 batch_output = self.model(**batch_input)
                 loss, logits = batch_output[:2]
                 temp_loss += loss.item()
@@ -608,7 +667,7 @@ class TaskRunner(object):
         if self.args.do_predict and self.test_data_loader is None:
             test_examples = self._check_cache(task="test")
             # example2feature
-            print("label2idx in test data loader::::::")
+            print("label2idx in test data loader:")
             print(self.label2idx)
             print("use binary classi:", self.args.use_binary_classification_mode)
             test_features = convert_examples_to_relation_extraction_features(
